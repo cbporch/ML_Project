@@ -6,6 +6,11 @@ from sklearn.decomposition import PCA
 
 reduction_dim = 500
 k_fold = 10
+lfw = fetch_lfw_pairs(subset='train')
+lfw_val = fetch_lfw_pairs(subset='10_folds')
+val_set = lfw_val.pairs
+pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
+target = lfw.target  # labels for lfw.pairs
 
 
 # x : vector
@@ -41,10 +46,6 @@ def csml(samples, t, d, a):
     matrix_a_zero = []  # todo: set this
     min_cve = sys.maxint
 
-lfw = fetch_lfw_pairs()
-
-pairs = lfw.pairs
-target = lfw.target
 
 # ***** Start Pre-processing *****
 
