@@ -1,0 +1,1 @@
+Implementation of the algorithm described in the paper "Cosine Mililarity Metric Learning for Face Verification" by Hieu V. Nguyen and Li Bai of the School of Computer Science, University of Nottingham
