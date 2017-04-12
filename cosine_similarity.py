@@ -46,6 +46,8 @@ lfw = fetch_lfw_pairs()
 pairs = lfw.pairs
 target = lfw.target
 
+# ***** Start Pre-processing *****
+
 # Feature Extraction : Intensity
 # concatenate all pixels together
 
@@ -84,6 +86,8 @@ eig = sorted(np.linalg.eigvals(covariance))[::-1]
 eig = np.diag(eig[0:reduction_dim])
 zero = np.zeros((reduction_dim, len(covariance) - reduction_dim))
 A_p = np.concatenate((eig, zero), axis=1)
+
+# ***** End of Pre-processing *****
 
 val = []  # todo - break validation set off
 csml(samples=dim_red_pairs, t=val, d=reduction_dim, a=A_p)
