@@ -41,7 +41,6 @@ def csml(samples, t, d, a):
     matrix_a_zero = []  # todo: set this
     min_cve = sys.maxint
 
-
 lfw = fetch_lfw_pairs()
 
 pairs = lfw.pairs
@@ -85,8 +84,6 @@ eig = sorted(np.linalg.eigvals(covariance))[::-1]
 eig = np.diag(eig[0:reduction_dim])
 zero = np.zeros((reduction_dim, len(covariance) - reduction_dim))
 A_p = np.concatenate((eig, zero), axis=1)
-
-
 
 # todo - break validation set off
 val = []
