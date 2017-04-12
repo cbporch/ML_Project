@@ -5,6 +5,7 @@ from sklearn.datasets import fetch_lfw_pairs
 from sklearn.decomposition import PCA
 
 reduction_dim = 500
+k_fold = 10
 
 
 # x : vector
@@ -27,11 +28,16 @@ def f_a(pos_x, pos_y, neg_x, neg_y, matrix_a, matrix_a_zero, beta):
     return g_a(pos_x, pos_y, neg_x, neg_y, matrix_a) - h_a(matrix_a, beta, matrix_a_zero)
 
 
-def cve(t, matrix_a, k):
+def cve(t, matrix_a, k=k_fold):  # 10-fold cross validation
+    # todo - set up k-fold cross validation
     pass
 
 
-def csml(s, t, d, k):
+def csml(samples, t, d, a):
+    # Split into matching (pos) and not matching (neg) pairs
+    pos_pairs = dim_red_pairs[:1100]
+    neg_pairs = dim_red_pairs[1100:]
+
     matrix_a_zero = []  # todo: set this
     min_cve = sys.maxint
 
@@ -78,8 +84,10 @@ print(np.shape(dim_red_pairs))
 eig = sorted(np.linalg.eigvals(covariance))[::-1]
 eig = np.diag(eig[0:reduction_dim])
 zero = np.zeros((reduction_dim, len(covariance) - reduction_dim))
-A_0 = np.concatenate((eig, zero), axis=1)
+A_p = np.concatenate((eig, zero), axis=1)
 
-# Split into matching (pos) and not matching (neg) pairs
-pos_pairs = dim_red_pairs[:1100]
-neg_pairs = dim_red_pairs[1100:]
+
+
+# todo - break validation set off
+val = []
+csml(samples=dim_red_pairs, t=val, d=reduction_dim, a=A_p)
