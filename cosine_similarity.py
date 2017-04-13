@@ -1,5 +1,5 @@
 import numpy as np
-import sys
+
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.datasets import fetch_lfw_pairs
 from sklearn.decomposition import PCA
@@ -22,7 +22,7 @@ val_set = lfw_val.pairs
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 def cs(x, y, matrix_a):
     # returns a kernel matrix
-    return cosine_similarity(np.dot(matrix_a, x), np.dot(matrix_a, y))
+    return cosine_similarity(np.dot(matrix_a.T, x).reshape(1,-1), np.dot(matrix_a.T, y).reshape(1,-1))[0][0]
 
 
 # pos_x_slice, pos_y_slice : slices with corresponding pairs that match
@@ -31,9 +31,10 @@ def cs(x, y, matrix_a):
 # alpha : used to weight the function, set to 1 since len(pos set) = len(neg set)
 def g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a, alpha=1):
     pos_sum = neg_sum = 0
+    matrix_a = np.reshape(matrix_a, (500,2914))
     for i in range(len(pos_x_slice)):
         pos_sum += cs(pos_x_slice[i], pos_y_slice[i], matrix_a)
-        neg_sum += cs(neg_x_slice, neg_y_slice, matrix_a)
+        neg_sum += cs(neg_x_slice[i], neg_y_slice[i], matrix_a)
     return pos_sum - (alpha * neg_sum)
 
 
@@ -41,6 +42,7 @@ def g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a, alpha=1):
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
 def h_a(matrix_a, beta, matrix_a_zero):
+    matrix_a = np.reshape(matrix_a, (500, 2914))
     return beta * np.linalg.norm(matrix_a - matrix_a_zero)
 
 
@@ -49,8 +51,9 @@ def h_a(matrix_a, beta, matrix_a_zero):
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
-def f_a(x, *args):
-    matrix_a = x
+def f_a(x0, *args):
+    print("f")
+    matrix_a = x0
     pos_pairs, neg_pairs, matrix_a_zero, beta = args
 
     pos_x_slice = pos_pairs[:, 0]
@@ -66,7 +69,8 @@ def f_a(x, *args):
 # k_fold : number of subsets to break t into
 def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
     size = len(t)
-    # todo - Transform all samples in T using Matrix a
+    for u in range(len(t[:, 0])):
+        t[:,0][u] = np.dot(matrix_a, t[:,0][u])
 
     # Partition T into K equal sized subsamples
     subsamples = []
@@ -75,7 +79,11 @@ def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
         subsamples.append(t[i * step:(i * step) + step])
     total_error = 0
     for k_fold in subsamples:
-        # todo - using subsample k as testing data, other K-1 subsamples as training data
+        # todo - use subsample k as testing data, other K-1 subsamples as training data
+        # determine threshold
+        for k in k_fold:
+            # get error
+            pass
         pass
     return total_error/k_fold
 
@@ -85,8 +93,8 @@ def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
 # d : dimension
 # a : starting value for matrix_a
 def csml(samples, t, matrix_a_p, d=reduction_dim):
-    matrix_a_zero = matrix_a_p
-    min_cve = sys.maxint
+    matrix_a_next = matrix_a_zero = matrix_a_p
+    min_cve = float("inf")
 
     # Split into matching (pos) and not matching (neg) pairs
     pos_pairs = samples[:1100]
@@ -94,21 +102,21 @@ def csml(samples, t, matrix_a_p, d=reduction_dim):
 
     for n in range(100):
         for b in range(10):
+            print(b)
             x0 = matrix_a_zero
-            args = [pos_pairs, neg_pairs, matrix_a_next, b]
-            matrix_a_star = fmin_cg(f=f_a(), x0=x0, args=args)
-            curr_cve = cve(t=t,matrix_a=matrix_a_star)
+            args = (pos_pairs, neg_pairs, matrix_a_next, b)
+            matrix_a_star, info = fmin_cg(f=f_a, x0=x0, args=args, maxiter=10)
+            matrix_a_star = np.reshape(matrix_a_star, (500, 2914))
+            print(np.shape(matrix_a_star))
+            curr_cve = cve(t=t, matrix_a=matrix_a_star)
             if curr_cve < min_cve:
                 min_cve = curr_cve
                 matrix_a_next = matrix_a_star
         matrix_a_zero = matrix_a_next
 
 
-
-
 #################################################
 # ***** Start Pre-processing *****
-
 # 1.) Feature Extraction : Intensity
 # concatenate all pixels together
 
@@ -131,17 +139,17 @@ extract_val_pairs = np.array(new_val)
 # dim: dimension to reduce set to
 def reduce_dim(pairs, dim=reduction_dim):
     pca = PCA(n_components=dim)
-    pair_1 = pca.fit_transform(pairs[:, 0])
-    pair_2 = pca.fit_transform(pairs[:, 1])
-    new_pairs = []
-    for i in range(len(pairs)):
-        new_pairs.append([pair_1[i], pair_2[i]])
+    size = len(pairs)
+    new_pairs = pca.fit_transform(np.concatenate((pairs[:, 0], pairs[:, 1]), axis=0))
+    pair1 = new_pairs[:size]
+    pair2 = new_pairs[size:]
+    new_pairs = np.stack((pair1, pair2), axis=1)
     return np.array(new_pairs), pca.get_covariance()
 
-
 dim_red_pairs, covariance = reduce_dim(extract_pairs)
-# todo - continue preprocessing for validation set
-print(np.shape(dim_red_pairs))
+dim_red_val, c = reduce_dim(extract_val_pairs)
+
+print(np.shape(dim_red_val))
 
 # 3.) Feature Combination?
 # todo: SVM for verification, according to the paper
@@ -157,4 +165,4 @@ A_p = np.concatenate((eig, zero), axis=1)
 # ***** End of Pre-processing *****
 #################################################
 
-csml(samples=dim_red_pairs, t=val_set, a=A_p)
+csml(samples=dim_red_pairs, t=val_set, matrix_a_p=A_p)
