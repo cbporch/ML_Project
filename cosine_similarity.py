@@ -9,7 +9,7 @@ k_fold = 10
 
 # Training Data
 lfw = fetch_lfw_pairs(subset='train')
-pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
+training_pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
 
 # 10-Fold Validation Set
 lfw_val = fetch_lfw_pairs(subset='10_folds')
@@ -85,12 +85,17 @@ def csml(samples, t, d, a):
 # 1.) Feature Extraction : Intensity
 # concatenate all pixels together
 
-new_p = []
-for x in pairs:
-    new_p.append([np.ravel(x[0]),
-                  np.ravel(x[1])])
+new_training_pairs = []
+for x in training_pairs:
+    new_training_pairs.append([np.ravel(x[0]),
+                               np.ravel(x[1])])
+extract_pairs = np.array(new_training_pairs)
 
-extracted_pairs = np.array(new_p)
+new_val = []
+for x in val_set:
+    new_val.append([np.ravel(x[0]),
+                    np.ravel(x[1])])
+extract_val_pairs = np.array(new_val)
 
 
 # 2.) Dimension Reduction
@@ -107,7 +112,8 @@ def reduce_dim(pairs, dim=reduction_dim):
     return np.array(new_pairs), pca.get_covariance()
 
 
-dim_red_pairs, covariance = reduce_dim(extracted_pairs)
+dim_red_pairs, covariance = reduce_dim(extract_pairs)
+# todo - continue preprocessing for validation set
 print(np.shape(dim_red_pairs))
 
 # 3.) Feature Combination?
