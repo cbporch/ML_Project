@@ -24,12 +24,13 @@ def cs(x, y, matrix_a):
     return cosine_similarity(np.dot(matrix_a, x), np.dot(matrix_a, y))
 
 
-# pos_x, pos_y : matching vectors
-# neg_x, neg_y : not matching vectors
+# pos_x_slice, pos_y_slice : slices with corresponding pairs that match
+# neg_x_slice, neg_y_slice : slices with corresponding pairs that do not match
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # alpha : used to weight the function, set to 1 since len(pos set) = len(neg set)
-def g_a(pos_x, pos_y, neg_x, neg_y, matrix_a, alpha=1):
-    return sum(cs(pos_x, pos_y, matrix_a)) - alpha * sum(cs(neg_x, neg_y, matrix_a))
+def g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a, alpha=1):
+
+    return sum(cs(pos_x_slice, pos_y_slice, matrix_a)) - alpha * sum(cs(neg_x_slice, neg_y_slice, matrix_a))
 
 
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
@@ -39,13 +40,13 @@ def h_a(matrix_a, beta, matrix_a_zero):
     return beta * np.linalg.norm(matrix_a - matrix_a_zero)
 
 
-# pos_x, pos_y : matching vectors
-# neg_x, neg_y : not matching vectors
+# pos_x_slice, pos_y_slice : slices with corresponding pairs that match
+# neg_x_slice, neg_y_slice : slices with corresponding pairs that do not match
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
-def f_a(pos_x, pos_y, neg_x, neg_y, matrix_a, matrix_a_zero, beta):
-    return g_a(pos_x, pos_y, neg_x, neg_y, matrix_a) - h_a(matrix_a, beta, matrix_a_zero)
+def f_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a, matrix_a_zero, beta):
+    return g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a) - h_a(matrix_a, beta, matrix_a_zero)
 
 
 # t : Validation Set
