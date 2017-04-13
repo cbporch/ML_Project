@@ -6,12 +6,14 @@ from sklearn.decomposition import PCA
 
 reduction_dim = 500
 k_fold = 10
+
+# Training Data
 lfw = fetch_lfw_pairs(subset='train')
+pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
+
+# 10-Fold Validation Set
 lfw_val = fetch_lfw_pairs(subset='10_folds')
 val_set = lfw_val.pairs
-pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
-target = lfw.target  # labels for lfw.pairs
-
 
 # x : vector
 # y : vector
@@ -33,9 +35,20 @@ def f_a(pos_x, pos_y, neg_x, neg_y, matrix_a, matrix_a_zero, beta):
     return g_a(pos_x, pos_y, neg_x, neg_y, matrix_a) - h_a(matrix_a, beta, matrix_a_zero)
 
 
-def cve(t, matrix_a, k=k_fold):  # 10-fold cross validation
-    # todo - set up k-fold cross validation
-    pass
+def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
+    size = len(t)
+    # todo - Transform all samples in T using Matrix a
+
+    # Partition T into K equal sized subsamples
+    subsamples = []
+    step = int(size/k_fold)
+    for i in range(k_fold):
+        subsamples.append(t[i * step:(i * step) + step])
+    total_error = 0
+    for k_fold in subsamples:
+        # todo - using subsample k as testing data, other K-1 subsamples as training data
+        pass
+    return total_error/k_fold
 
 
 def csml(samples, t, d, a):
@@ -90,5 +103,4 @@ A_p = np.concatenate((eig, zero), axis=1)
 
 # ***** End of Pre-processing *****
 
-val = []  # todo - break validation set off
-csml(samples=dim_red_pairs, t=val, d=reduction_dim, a=A_p)
+csml(samples=dim_red_pairs, t=val_set, d=reduction_dim, a=A_p)
