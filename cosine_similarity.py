@@ -25,7 +25,7 @@ def cs(x, y, matrix_a):
 
 
 # pos_x, pos_y : matching vectors
-# neg_x, neg_y : matching vectors
+# neg_x, neg_y : not matching vectors
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # alpha : used to weight the function, set to 1 since len(pos set) = len(neg set)
 def g_a(pos_x, pos_y, neg_x, neg_y, matrix_a, alpha=1):
@@ -40,7 +40,7 @@ def h_a(matrix_a, beta, matrix_a_zero):
 
 
 # pos_x, pos_y : matching vectors
-# neg_x, neg_y : matching vectors
+# neg_x, neg_y : not matching vectors
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
@@ -79,10 +79,10 @@ def csml(samples, t, d, a):
     matrix_a_zero = []  # todo: set this
     min_cve = sys.maxint
 
-
+#################################################
 # ***** Start Pre-processing *****
 
-# Feature Extraction : Intensity
+# 1.) Feature Extraction : Intensity
 # concatenate all pixels together
 
 new_p = []
@@ -93,7 +93,7 @@ for x in pairs:
 extracted_pairs = np.array(new_p)
 
 
-# Dimension Reduction
+# 2.) Dimension Reduction
 # using PCA
 # pairs : pairs of LFW data to transform
 # dim: dimension to reduce set to
@@ -110,10 +110,10 @@ def reduce_dim(pairs, dim=reduction_dim):
 dim_red_pairs, covariance = reduce_dim(extracted_pairs)
 print(np.shape(dim_red_pairs))
 
-# Feature Combination?
+# 3.) Feature Combination?
 # todo: SVM for verification, according to the paper
 
-# Choose A_0 - find starting value for A_0, using Whitened PCA
+# 4.) Choose A_0 - find starting value for A_0, using Whitened PCA
 # Whitened PCA is a diagonal matrix(d,m) of the largest eigenvalues of the covariance matrix from PCA
 
 eig = sorted(np.linalg.eigvals(covariance))[::-1]
@@ -122,5 +122,6 @@ zero = np.zeros((reduction_dim, len(covariance) - reduction_dim))
 A_p = np.concatenate((eig, zero), axis=1)
 
 # ***** End of Pre-processing *****
+#################################################
 
 csml(samples=dim_red_pairs, t=val_set, d=reduction_dim, a=A_p)
