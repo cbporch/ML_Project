@@ -15,6 +15,7 @@ training_pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are n
 # 10-Fold Validation Set
 lfw_val = fetch_lfw_pairs(subset='10_folds')
 val_set = lfw_val.pairs
+val_labels = lfw_val.target
 
 
 # x : vector
@@ -31,7 +32,6 @@ def cs(x, y, matrix_a):
 # alpha : used to weight the function, set to 1 since len(pos set) = len(neg set)
 def g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a, alpha=1):
     pos_sum = neg_sum = 0
-    matrix_a = np.reshape(matrix_a, (500,2914))
     for i in range(len(pos_x_slice)):
         pos_sum += cs(pos_x_slice[i], pos_y_slice[i], matrix_a)
         neg_sum += cs(neg_x_slice[i], neg_y_slice[i], matrix_a)
@@ -42,7 +42,6 @@ def g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a, alpha=1):
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
 def h_a(matrix_a, beta, matrix_a_zero):
-    matrix_a = np.reshape(matrix_a, (500, 2914))
     return beta * np.linalg.norm(matrix_a - matrix_a_zero)
 
 
@@ -54,6 +53,7 @@ def h_a(matrix_a, beta, matrix_a_zero):
 def f_a(x0, *args):
     print("f")
     matrix_a = x0
+    matrix_a = np.reshape(matrix_a, (500, 2914))
     pos_pairs, neg_pairs, matrix_a_zero, beta = args
 
     pos_x_slice = pos_pairs[:, 0]
@@ -78,13 +78,22 @@ def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
     for i in range(k_fold):
         subsamples.append(t[i * step:(i * step) + step])
     total_error = 0
+    index = 0
     for k_fold in subsamples:
         # todo - use subsample k as testing data, other K-1 subsamples as training data
         # determine threshold
+        theta = 0.7
+        test_error = 0
         for k in k_fold:
             # get error
-            pass
-        pass
+            if val_labels[index] == 1 and cs(k[:, 0], k[:, 1]) < theta:
+                # false negative
+                test_error += 1
+            if val_labels[index] == 0 and cs(k[:, 0], k[:, 1]) > theta:
+                # false positive
+                test_error += 1
+            index += 1
+        total_error += test_error/len(k_fold)
     return total_error/k_fold
 
 
@@ -105,7 +114,7 @@ def csml(samples, t, matrix_a_p, d=reduction_dim):
             print(b)
             x0 = matrix_a_zero
             args = (pos_pairs, neg_pairs, matrix_a_next, b)
-            matrix_a_star, info = fmin_cg(f=f_a, x0=x0, args=args, maxiter=10)
+            matrix_a_star, info = fmin_cg(f=f_a, x0=x0, args=args, maxiter=1)
             matrix_a_star = np.reshape(matrix_a_star, (500, 2914))
             print(np.shape(matrix_a_star))
             curr_cve = cve(t=t, matrix_a=matrix_a_star)
