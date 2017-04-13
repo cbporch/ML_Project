@@ -15,6 +15,7 @@ pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
 lfw_val = fetch_lfw_pairs(subset='10_folds')
 val_set = lfw_val.pairs
 
+
 # x : vector
 # y : vector
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
@@ -23,18 +24,33 @@ def cs(x, y, matrix_a):
     return cosine_similarity(np.dot(matrix_a, x), np.dot(matrix_a, y))
 
 
+# pos_x, pos_y : matching vectors
+# neg_x, neg_y : matching vectors
+# matrix_a : linear transformation A: R^m -> R^d(d<=m)
+# alpha : used to weight the function, set to 1 since len(pos set) = len(neg set)
 def g_a(pos_x, pos_y, neg_x, neg_y, matrix_a, alpha=1):
     return sum(cs(pos_x, pos_y, matrix_a)) - alpha * sum(cs(neg_x, neg_y, matrix_a))
 
 
+# matrix_a : linear transformation A: R^m -> R^d(d<=m)
+# beta : weight parameter
+# matrix_a_zero : starting value of matrix_a
 def h_a(matrix_a, beta, matrix_a_zero):
     return beta * np.linalg.norm(matrix_a - matrix_a_zero)
 
 
+# pos_x, pos_y : matching vectors
+# neg_x, neg_y : matching vectors
+# matrix_a : linear transformation A: R^m -> R^d(d<=m)
+# beta : weight parameter
+# matrix_a_zero : starting value of matrix_a
 def f_a(pos_x, pos_y, neg_x, neg_y, matrix_a, matrix_a_zero, beta):
     return g_a(pos_x, pos_y, neg_x, neg_y, matrix_a) - h_a(matrix_a, beta, matrix_a_zero)
 
 
+# t : Validation Set
+# matrix_a : linear transformation A: R^m -> R^d(d<=m)
+# k_fold : number of subsets to break t into
 def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
     size = len(t)
     # todo - Transform all samples in T using Matrix a
@@ -51,6 +67,10 @@ def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
     return total_error/k_fold
 
 
+# samples : Training Data
+# t : Validation Set
+# d : dimension
+#a : starting value for matrix_a
 def csml(samples, t, d, a):
     # Split into matching (pos) and not matching (neg) pairs
     pos_pairs = dim_red_pairs[:1100]
@@ -75,8 +95,8 @@ extracted_pairs = np.array(new_p)
 
 # Dimension Reduction
 # using PCA
-
-
+# pairs : pairs of LFW data to transform
+# dim: dimension to reduce set to
 def reduce_dim(pairs, dim=reduction_dim):
     pca = PCA(n_components=dim)
     pair_1 = pca.fit_transform(pairs[:, 0])
