@@ -29,8 +29,11 @@ def cs(x, y, matrix_a):
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # alpha : used to weight the function, set to 1 since len(pos set) = len(neg set)
 def g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a, alpha=1):
-
-    return sum(cs(pos_x_slice, pos_y_slice, matrix_a)) - alpha * sum(cs(neg_x_slice, neg_y_slice, matrix_a))
+    pos_sum = neg_sum = 0
+    for i in range(len(pos_x_slice)):
+        pos_sum += cs(pos_x_slice[i], pos_y_slice[i], matrix_a)
+        neg_sum += cs(neg_x_slice, neg_y_slice, matrix_a)
+    return pos_sum - (alpha * neg_sum)
 
 
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
