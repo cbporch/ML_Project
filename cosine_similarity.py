@@ -5,7 +5,7 @@ from sklearn.datasets import fetch_lfw_pairs
 from sklearn.decomposition import PCA
 from scipy.optimize import fmin_cg
 
-reduction_dim = 500
+reduction_dim = 200
 k_fold = 10
 
 # Training Data
@@ -23,25 +23,29 @@ val_labels = lfw_val.target
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 def cs(x, y, matrix_a):
     # returns a kernel matrix
-    return cosine_similarity(np.dot(matrix_a.T, x).reshape(1,-1), np.dot(matrix_a.T, y).reshape(1,-1))[0][0]
+    s = cosine_similarity(np.dot(matrix_a.T, x).reshape(1, -1), np.dot(matrix_a.T, y).reshape(1, -1))[0][0]
+    # print(s)
+    return s
 
 
 # pos_x_slice, pos_y_slice : slices with corresponding pairs that match
 # neg_x_slice, neg_y_slice : slices with corresponding pairs that do not match
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # alpha : used to weight the function, set to 1 since len(pos set) = len(neg set)
-def g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a, alpha=1):
+def g_a(x0, pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice):
+    print("g")
     pos_sum = neg_sum = 0
     for i in range(len(pos_x_slice)):
-        pos_sum += cs(pos_x_slice[i], pos_y_slice[i], matrix_a)
-        neg_sum += cs(neg_x_slice[i], neg_y_slice[i], matrix_a)
-    return pos_sum - (alpha * neg_sum)
+        pos_sum += cs(pos_x_slice[i], pos_y_slice[i], x0)
+        neg_sum += cs(neg_x_slice[i], neg_y_slice[i], x0)
+    return pos_sum - neg_sum
 
 
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
 def h_a(matrix_a, beta, matrix_a_zero):
+    print("h")
     return beta * np.linalg.norm(matrix_a - matrix_a_zero)
 
 
@@ -51,30 +55,64 @@ def h_a(matrix_a, beta, matrix_a_zero):
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
 def f_a(x0, *args):
-    print("f")
-    matrix_a = x0
-    matrix_a = np.reshape(matrix_a, (500, 2914))
+    x0 = np.reshape(x0, (reduction_dim, 2914))
     pos_pairs, neg_pairs, matrix_a_zero, beta = args
 
     pos_x_slice = pos_pairs[:, 0]
     pos_y_slice = pos_pairs[:, 1]
-    neg_x_slice = pos_pairs[:, 0]
-    neg_y_slice = pos_pairs[:, 1]
+    neg_x_slice = neg_pairs[:, 0]
+    neg_y_slice = neg_pairs[:, 1]
 
-    return g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a) - h_a(matrix_a, beta, matrix_a_zero)
+    g = g_a(x0, pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice)
+    h = h_a(x0, beta, matrix_a_zero)
+
+    print(g)
+    print(h)
+    return g - h
+
+
+def sum_gradcs(pairs, a_):
+    a_ = np.reshape(a_, (reduction_dim, 2914))
+    x_i = pairs[:, 0]
+    y_i = pairs[:, 1]
+
+    sum_ = 0
+    for i in range(len(x_i)):
+        pos_u = np.dot(np.dot(x_i[i].T, a_.T), np.dot(a_, y_i[i]))
+        pos_v = np.sqrt(np.dot(np.dot(x_i[i].T, a_.T), np.dot(a_, x_i[i]))) * \
+                np.sqrt(np.dot(np.dot(y_i[i].T, a_.T), np.dot(a_, y_i[i])))
+
+        grad_u = np.dot(a_, (np.dot(x_i[i], y_i[i].T) + np.dot(y_i[i], x_i[i].T)))
+        grad_v = (np.sqrt(np.dot(np.dot(y_i[i].T, a_.T), np.dot(a_, y_i[i]))) /
+                  np.sqrt(np.dot(np.dot(x_i[i].T, a_.T), np.dot(a_, x_i[i])))) * np.dot(a_, np.dot(x_i[i],
+                                                                                                   x_i[i].T)) - \
+                 (np.sqrt(np.dot(np.dot(x_i[i].T, a_.T), np.dot(a_, x_i[i]))) /
+                  np.sqrt(np.dot(np.dot(y_i[i].T, a_.T), np.dot(a_, y_i[i])))) * np.dot(a_, np.dot(y_i[i],
+                                                                                                   y_i[i].T))
+
+        sum_ += ((1 / pos_v) * grad_u) - ((pos_u / pos_v ** 2) * grad_v)
+    return sum_
+
+
+def gradf(x0, *args):
+    x0 = np.reshape(x0, (reduction_dim, 2914))
+    pos_pairs, neg_pairs, matrix_a_zero, beta = args
+
+    return sum_gradcs(pos_pairs, x0) - sum_gradcs(neg_pairs, x0) - (2 * beta(x0 - matrix_a_zero))
 
 
 # t : Validation Set
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # k_fold : number of subsets to break t into
 def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
+    print("cve {0}:".format(np.shape(matrix_a)))
     size = len(t)
     for u in range(len(t[:, 0])):
-        t[:,0][u] = np.dot(matrix_a, t[:,0][u])
+        t[:, 0][u] = np.dot(matrix_a, t[:, 0][u])
 
     # Partition T into K equal sized subsamples
     subsamples = []
-    step = int(size/k_fold)
+    step = int(size / k_fold)
     for i in range(k_fold):
         subsamples.append(t[i * step:(i * step) + step])
     total_error = 0
@@ -93,8 +131,8 @@ def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
                 # false positive
                 test_error += 1
             index += 1
-        total_error += test_error/len(k_fold)
-    return total_error/k_fold
+        total_error += test_error / len(k_fold)
+    return total_error / k_fold
 
 
 # samples : Training Data
@@ -112,14 +150,14 @@ def csml(samples, t, matrix_a_p, d=reduction_dim):
     for n in range(100):
         for b in range(10):
             print(b)
-            x0 = matrix_a_zero
             args = (pos_pairs, neg_pairs, matrix_a_next, b)
-            matrix_a_star, info = fmin_cg(f=f_a, x0=x0, args=args, maxiter=1)
-            matrix_a_star = np.reshape(matrix_a_star, (500, 2914))
-            print(np.shape(matrix_a_star))
+            matrix_a_star = fmin_cg(f=f_a, x0=matrix_a_next, args=args, fprime=gradf())
+            matrix_a_star = np.reshape(matrix_a_star, (reduction_dim, 2914))
+
             curr_cve = cve(t=t, matrix_a=matrix_a_star)
             if curr_cve < min_cve:
                 min_cve = curr_cve
+                print(str(min_cve))
                 matrix_a_next = matrix_a_star
         matrix_a_zero = matrix_a_next
 
@@ -129,23 +167,28 @@ def csml(samples, t, matrix_a_p, d=reduction_dim):
 # 1.) Feature Extraction : Intensity
 # concatenate all pixels together
 
+print("Feature Extraction")
 new_training_pairs = []
 for x in training_pairs:
     new_training_pairs.append([np.ravel(x[0]),
                                np.ravel(x[1])])
-extract_pairs = np.array(new_training_pairs)
+train_pairs = np.array(new_training_pairs)
+print(np.shape(train_pairs))
 
 new_val = []
 for x in val_set:
     new_val.append([np.ravel(x[0]),
                     np.ravel(x[1])])
-extract_val_pairs = np.array(new_val)
-
+val_pairs = np.array(new_val)
+print(np.shape(val_pairs))
 
 # 2.) Dimension Reduction
 # using PCA
 # pairs : pairs of LFW data to transform
 # dim: dimension to reduce set to
+print('Dimension Reduction')
+
+
 def reduce_dim(pairs, dim=reduction_dim):
     pca = PCA(n_components=dim)
     size = len(pairs)
@@ -155,23 +198,25 @@ def reduce_dim(pairs, dim=reduction_dim):
     new_pairs = np.stack((pair1, pair2), axis=1)
     return np.array(new_pairs), pca.get_covariance()
 
-dim_red_pairs, covariance = reduce_dim(extract_pairs)
-dim_red_val, c = reduce_dim(extract_val_pairs)
 
-print(np.shape(dim_red_val))
+train_pairs, covariance = reduce_dim(train_pairs)
+print(np.shape(train_pairs))
+
+val_pairs, c = reduce_dim(val_pairs)
+print(np.shape(val_pairs))
 
 # 3.) Feature Combination?
 # todo: SVM for verification, according to the paper
 
 # 4.) Choose A_0 - find starting value for A_0, using Whitened PCA
 # Whitened PCA is a diagonal matrix(d,m) of the largest eigenvalues of the covariance matrix from PCA
-
+print("choose A_0")
 eig = sorted(np.linalg.eigvals(covariance))[::-1]
 eig = np.diag(eig[0:reduction_dim])
 zero = np.zeros((reduction_dim, len(covariance) - reduction_dim))
 A_p = np.concatenate((eig, zero), axis=1)
-
+print(np.shape(A_p))
 # ***** End of Pre-processing *****
 #################################################
-
-csml(samples=dim_red_pairs, t=val_set, matrix_a_p=A_p)
+print("Pre-processing complete")
+csml(samples=train_pairs, t=val_pairs, matrix_a_p=A_p)
