@@ -3,6 +3,7 @@ import sys
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.datasets import fetch_lfw_pairs
 from sklearn.decomposition import PCA
+from scipy.optimize import fmin_cg
 
 reduction_dim = 500
 k_fold = 10
@@ -48,7 +49,15 @@ def h_a(matrix_a, beta, matrix_a_zero):
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
-def f_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a, matrix_a_zero, beta):
+def f_a(x, *args):
+    matrix_a = x
+    pos_pairs, neg_pairs, matrix_a_zero, beta = args
+
+    pos_x_slice = pos_pairs[:, 0]
+    pos_y_slice = pos_pairs[:, 1]
+    neg_x_slice = pos_pairs[:, 0]
+    neg_y_slice = pos_pairs[:, 1]
+
     return g_a(pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, matrix_a) - h_a(matrix_a, beta, matrix_a_zero)
 
 
@@ -74,14 +83,28 @@ def cve(t, matrix_a, k_fold=k_fold):  # 10-fold cross validation
 # samples : Training Data
 # t : Validation Set
 # d : dimension
-#a : starting value for matrix_a
-def csml(samples, t, d, a):
-    # Split into matching (pos) and not matching (neg) pairs
-    pos_pairs = dim_red_pairs[:1100]
-    neg_pairs = dim_red_pairs[1100:]
-
-    matrix_a_zero = []  # todo: set this
+# a : starting value for matrix_a
+def csml(samples, t, matrix_a_p, d=reduction_dim):
+    matrix_a_zero = matrix_a_p
     min_cve = sys.maxint
+
+    # Split into matching (pos) and not matching (neg) pairs
+    pos_pairs = samples[:1100]
+    neg_pairs = samples[1100:]
+
+    for n in range(100):
+        for b in range(10):
+            x0 = matrix_a_zero
+            args = [pos_pairs, neg_pairs, matrix_a_next, b]
+            matrix_a_star = fmin_cg(f=f_a(), x0=x0, args=args)
+            curr_cve = cve(t=t,matrix_a=matrix_a_star)
+            if curr_cve < min_cve:
+                min_cve = curr_cve
+                matrix_a_next = matrix_a_star
+        matrix_a_zero = matrix_a_next
+
+
+
 
 #################################################
 # ***** Start Pre-processing *****
@@ -134,4 +157,4 @@ A_p = np.concatenate((eig, zero), axis=1)
 # ***** End of Pre-processing *****
 #################################################
 
-csml(samples=dim_red_pairs, t=val_set, d=reduction_dim, a=A_p)
+csml(samples=dim_red_pairs, t=val_set, a=A_p)
