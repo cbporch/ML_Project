@@ -139,7 +139,7 @@ def cve(t, matrix_a, k_fold_size=k_fold):  # 10-fold cross validation
 # t : Validation Set
 # d : dimension
 # a : starting value for matrix_a
-def csml(samples, t, matrix_a_p, d=DIM_M):
+def csml(samples, t, matrix_a_p):
     matrix_a_next = matrix_a_zero = matrix_a_p
     min_cve = curr_cve = float("inf")
 
@@ -151,18 +151,18 @@ def csml(samples, t, matrix_a_p, d=DIM_M):
         if min_cve <= 0:
             print("final cve: {0}".format(min_cve))
             return matrix_a_zero
-        for b in np.arange(6, 1, -0.1):
+        for beta in np.arange(6, 1, -0.1):
             if min_cve <= 0:
                 continue
-            matrix_a_star = gradf(matrix_a_next, pos_pairs, neg_pairs, matrix_a_zero, b)
+            matrix_a_star = gradf(matrix_a_next, pos_pairs, neg_pairs, matrix_a_zero, beta)
             matrix_a_star = np.reshape(matrix_a_star, (DIM_D, DIM_M))
             curr_cve = cve(t=t, matrix_a=matrix_a_star)
             # print(matrix_a_star == matrix_a_next)
             if curr_cve < min_cve:
                 min_cve = curr_cve
                 matrix_a_next = matrix_a_star
-                best_b = b
-            print("min_cve for b = {1:2.2f}: {0}".format(min_cve, b))
+                best_b = beta
+            print("min_cve for b = {1:2.2f}: {0}".format(min_cve, beta))
             matrix_a_zero = matrix_a_next
     print("final cve for beta of {1:2.2f}: {0}".format(min_cve, best_b))
     return matrix_a_zero
@@ -224,7 +224,7 @@ for e in eig:
 eig = np.diag(new_eig[0:DIM_D])
 zero = np.zeros((DIM_D, DIM_M - DIM_D))
 A_p = np.concatenate((eig, zero), axis=1)
-print(np.shape(A_p))
+print("A_p shape: {0}".format(np.shape(A_p)))
 # ***** End of Pre-processing *****
 #################################################
 print("Pre-processing complete")
