@@ -3,9 +3,8 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.datasets import fetch_lfw_pairs
 from sklearn.decomposition import PCA
-from scipy.optimize import fmin_cg
 
-reduction_dim = 100
+reduction_dim = 200
 k_fold = 10
 
 # Training Data
@@ -103,8 +102,6 @@ def gradf(x0, pos_pairs, neg_pairs, matrix_a_zero, beta):
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # k_fold : number of subsets to break t into
 def cve(t, matrix_a, k_fold_size=k_fold):  # 10-fold cross validation
-    print("cve {0}:".format(np.shape(t)))
-    print("cve {0}:".format(np.shape(matrix_a)))
     size = len(t)
     for u in range(len(t[:, 0])):
         t[:, 0][u] = np.dot(matrix_a[[range(reduction_dim)],[range(reduction_dim)]], t[:, 0][u])
@@ -118,22 +115,22 @@ def cve(t, matrix_a, k_fold_size=k_fold):  # 10-fold cross validation
     index = 0
     for k_fold in np.array(subsamples):
         # determine threshold
-        theta = 0.0  # cosine similarity returns range {-1 to 1}, -1 if dissimilar, 0 if unrelated, 1 if similar
+        theta = 0.01  # cosine similarity returns range {-1 to 1}, -1 if dissimilar, 0 if unrelated, 1 if similar
         test_error = 0
         for k in k_fold:
             # get error
             sim = cs(k[0], k[1], matrix_a)
             if val_labels[index] == 1 and sim < theta:
                 # false negative
-                print("FN: {3} {2} {0} {1}".format(k[0][0], k[1][0], sim, val_labels[index]))
+                # print("FN: {3} {2} {0} {1}".format(k[0][0], k[1][0], sim, val_labels[index]))
                 test_error += 1
             if val_labels[index] == 0 and sim > theta:
                 # false positive
-                print("FP: {3} {2} {0} {1}".format(k[0][0], k[1][0], sim, val_labels[index]))
+                # print("FP: {3} {2} {0} {1}".format(k[0][0], k[1][0], sim, val_labels[index]))
                 test_error += 1
             index += 1
         total_error += test_error / len(k_fold)
-        print("k_fold err : {0}".format(total_error))
+        print("k_fold err : {0}".format(test_error / len(k_fold)))
     return total_error / k_fold_size
 
 
@@ -143,14 +140,18 @@ def cve(t, matrix_a, k_fold_size=k_fold):  # 10-fold cross validation
 # a : starting value for matrix_a
 def csml(samples, t, matrix_a_p, d=reduction_dim):
     matrix_a_next = matrix_a_zero = matrix_a_p
-    min_cve = float("inf")
+    min_cve = curr_cve = float("inf")
 
     # Split into matching (pos) and not matching (neg) pairs
     pos_pairs = samples[:1100]
     neg_pairs = samples[1100:]
 
-    for n in range(100):
-        for b in range(10):
+    for n in range(3):
+        if min_cve <= 0:
+            continue
+        for b in range(100, 10, -5):
+            if min_cve <= 0:
+                continue
             print(b)
             matrix_a_star = gradf(matrix_a_next, pos_pairs, neg_pairs, matrix_a_zero, b)
             matrix_a_star = np.reshape(matrix_a_star, (reduction_dim, 2914))
