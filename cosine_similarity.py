@@ -57,7 +57,7 @@ def h_a(matrix_a, beta, matrix_a_zero):
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
 def f_a(x0, *args):
-    x0 = np.reshape(x0, (DIM_D, DIM_M))
+    # x0 = np.reshape(x0, (DIM_D, DIM_M))
     pos_pairs, neg_pairs, matrix_a_zero, beta = args
 
     pos_x_slice = pos_pairs[:, 0]
@@ -72,7 +72,7 @@ def f_a(x0, *args):
 
 
 def sum_gradcs(pairs, a_):
-    a_ = np.reshape(a_, (DIM_D, DIM_M))
+    # a_ = np.reshape(a_, (DIM_D, DIM_M))
     x_i = pairs[:, 0]
     y_i = pairs[:, 1]
     sum_ = 0
@@ -92,7 +92,7 @@ def sum_gradcs(pairs, a_):
 
 
 def gradf(x0, pos_pairs, neg_pairs, matrix_a_zero, beta):
-    x0 = np.reshape(x0, (DIM_D, DIM_M))
+    # x0 = np.reshape(x0, (DIM_D, DIM_M))
     return sum_gradcs(pos_pairs, x0) - sum_gradcs(neg_pairs, x0) - (2 * beta * (x0 - matrix_a_zero))
 
 
@@ -147,15 +147,14 @@ def csml(samples, t, matrix_a_p):
     pos_pairs = samples[:1100]
     neg_pairs = samples[1100:]
 
-    for n in range(1):
+    for n in range(5):
         if min_cve <= 0:
             print("final cve: {0}".format(min_cve))
             return matrix_a_zero
-        for beta in np.arange(6, 1, -0.1):
+        for beta in np.arange(6, 0, -0.1):
             if min_cve <= 0:
                 continue
             matrix_a_star = gradf(matrix_a_next, pos_pairs, neg_pairs, matrix_a_zero, beta)
-            matrix_a_star = np.reshape(matrix_a_star, (DIM_D, DIM_M))
             curr_cve = cve(t=t, matrix_a=matrix_a_star)
             # print(matrix_a_star == matrix_a_next)
             if curr_cve < min_cve:
@@ -217,15 +216,20 @@ print(np.shape(val_pairs))
 # 4.) Choose A_0 - find starting value for A_0, using Whitened PCA
 # Whitened PCA is a diagonal matrix(d,m) of the largest eigenvalues of the covariance matrix from PCA
 print("choose A_0")
+
 eig = sorted(np.linalg.eigvals(covariance))[::-1]
 new_eig = []
 for e in eig:
     new_eig.append(e ** -0.5)
 eig = np.diag(new_eig[0:DIM_D])
+
 zero = np.zeros((DIM_D, DIM_M - DIM_D))
 A_p = np.concatenate((eig, zero), axis=1)
+
 print("A_p shape: {0}".format(np.shape(A_p)))
+
 # ***** End of Pre-processing *****
 #################################################
 print("Pre-processing complete")
+
 csml(samples=train_pairs, t=val_pairs, matrix_a_p=A_p)
