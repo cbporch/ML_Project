@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.datasets import fetch_lfw_pairs
 from sklearn.decomposition import PCA
+from sklearn import svm
 
 DIM_M = 500
 DIM_D = 200
@@ -23,9 +24,9 @@ val_labels = lfw_val.target
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 def cs(x, y, matrix_a):
     # returns a kernel matrix
-    s = cosine_similarity(np.dot(matrix_a.T, x).reshape(1, -1), np.dot(matrix_a.T, y).reshape(1, -1))[0][0]
-    # s = np.dot(np.dot(matrix_a.T, x), np.dot(matrix_a.T, y)) / np.dot((np.sqrt(np.dot(np.dot(matrix_a.T, x), np.dot(matrix_a.T, x)))),
-    #                                                                 np.dot(np.dot(matrix_a.T, y), np.dot(matrix_a.T, y)))
+    # s = cosine_similarity(np.dot(matrix_a.T, x).reshape(1, -1), np.dot(matrix_a.T, y).reshape(1, -1))[0][0]
+    s = np.dot(np.dot(matrix_a, x), np.dot(matrix_a, y)) / np.dot((np.sqrt(np.dot(np.dot(matrix_a, x), np.dot(matrix_a, x)))),
+                                                                    np.dot(np.dot(matrix_a, y), np.dot(matrix_a , y)))
     # print(s)
     return s
 
@@ -35,7 +36,6 @@ def cs(x, y, matrix_a):
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # alpha : used to weight the function, set to 1 since len(pos set) = len(neg set)
 def g_a(x0, pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice):
-    print("g")
     pos_sum = neg_sum = 0
     for i in range(len(pos_x_slice)):
         pos_sum += cs(pos_x_slice[i], pos_y_slice[i], x0)
@@ -47,7 +47,6 @@ def g_a(x0, pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice):
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
 def h_a(matrix_a, beta, matrix_a_zero):
-    print("h")
     return beta * np.linalg.norm(matrix_a - matrix_a_zero)
 
 
@@ -101,26 +100,41 @@ def gradf(x0, pos_pairs, neg_pairs, matrix_a_zero, beta):
 # k_fold : number of subsets to break t into
 def cve(t, matrix_a, k_fold_size=k_fold):  # 10-fold cross validation
     size = len(t)
-    new_t = []
-    for u in range(len(t[:, 0])):
-        p_1 = np.dot(matrix_a, t[:, 0][u])  # [[range(DIM_M)], [range(DIM_M)]]
-        p_2 = np.dot(matrix_a, t[:, 1][u])
-        new_t.append([p_1,p_2])
-    new_t = np.array(new_t)
+    # new_t = []
+    # for u in range(len(t[:, 0])):
+    #     p_1 = np.dot(matrix_a, t[:, 0][u])  # [[range(DIM_M)], [range(DIM_M)]]
+    #     p_2 = np.dot(matrix_a, t[:, 1][u])
+    #     new_t.append([p_1,p_2])
+    # new_t = np.array(new_t)
+
     # Partition T into K equal sized subsamples
     subsamples = []
     step = int(size / k_fold_size)
     for i in range(k_fold_size):
-        subsamples.append(new_t[i * step:(i * step) + step])
+        subsamples.append(t[i * step:(i * step) + step])
+
     total_error = 0
     index = 0
     for k_fold in np.array(subsamples):
         # determine threshold
         theta = 0.0  # cosine similarity returns range {-1 to 1}, -1 if dissimilar, 0 if unrelated, 1 if similar
         test_error = 0
-        for k in k_fold:
+        for k in range(len(k_fold)):
+            sim_scores=[]
+            train_k = np.concatenate((k_fold[:k], k_fold[k+1:]), axis=0)
+            train_k_labels = np.concatenate((val_labels[k * step:(k * step) + step], val_labels[((k+1) * step) + step:]))
+
+            for j in train_k:
+                sim_scores.append(cs(j[0],j[1], matrix_a))
+
+            sup_vec_mac = svm.SVC()
+
+            sup_vec_mac.fit(sim_scores, train_k_labels)
+
+            theta = sup_vec_mac.coef_[0] # separator for k-1 training data
+            print(theta)
             # get error
-            sim = cs(k[0], k[1], matrix_a)
+            sim = cs(k_fold[k][0], k_fold[k][1], matrix_a)
             if val_labels[index] == 1 and sim < theta:
                 # false negative
                 # print("FN: {3} {2} {0} {1}".format(k[0][0], k[1][0], sim, val_labels[index]))
@@ -141,7 +155,7 @@ def cve(t, matrix_a, k_fold_size=k_fold):  # 10-fold cross validation
 # a : starting value for matrix_a
 def csml(samples, t, matrix_a_p):
     matrix_a_next = matrix_a_zero = matrix_a_p
-    min_cve = curr_cve = float("inf")
+    min_cve = float("inf")
 
     # Split into matching (pos) and not matching (neg) pairs
     pos_pairs = samples[:1100]
@@ -151,7 +165,7 @@ def csml(samples, t, matrix_a_p):
         if min_cve <= 0:
             print("final cve: {0}".format(min_cve))
             return matrix_a_zero
-        for beta in np.arange(6, 0, -0.1):
+        for beta in np.arange(0.1, 10, 0.1):
             if min_cve <= 0:
                 continue
             matrix_a_star = gradf(matrix_a_next, pos_pairs, neg_pairs, matrix_a_zero, beta)
@@ -161,7 +175,7 @@ def csml(samples, t, matrix_a_p):
                 min_cve = curr_cve
                 matrix_a_next = matrix_a_star
                 best_b = beta
-            print("min_cve for b = {1:2.2f}: {0}".format(min_cve, beta))
+            print("min_cve for b = {1:2.2f}: {0:1.5f}".format(min_cve, beta))
             matrix_a_zero = matrix_a_next
     print("final cve for beta of {1:2.2f}: {0}".format(min_cve, best_b))
     return matrix_a_zero
