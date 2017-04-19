@@ -5,6 +5,8 @@ from sklearn.datasets import fetch_lfw_pairs
 from sklearn.decomposition import PCA
 from sklearn import svm
 
+import nearest_neighbor
+
 DIM_M = 500
 DIM_D = 200
 k_fold = 10
@@ -24,7 +26,7 @@ val_labels = lfw_val.target
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 def cs(x, y, matrix_a):
     # returns a kernel matrix
-    # s = cosine_similarity(np.dot(matrix_a.T, x).reshape(1, -1), np.dot(matrix_a.T, y).reshape(1, -1))[0][0]
+    # s = cosine_similarity(np.dot(matrix_a, x).reshape(1, -1), np.dot(matrix_a, y).reshape(1, -1))[0][0]
     s = np.dot(np.dot(matrix_a, x), np.dot(matrix_a, y)) / np.dot((np.sqrt(np.dot(np.dot(matrix_a, x), np.dot(matrix_a, x)))),
                                                                     np.dot(np.dot(matrix_a, y), np.dot(matrix_a , y)))
     # print(s)
@@ -90,49 +92,60 @@ def sum_gradcs(pairs, a_):
     return sum_
 
 
-def gradf(x0, pos_pairs, neg_pairs, matrix_a_zero, beta):
+def gradf(m_a, pos_pairs, neg_pairs, matrix_a_zero, beta):
     # x0 = np.reshape(x0, (DIM_D, DIM_M))
-    return sum_gradcs(pos_pairs, x0) - sum_gradcs(neg_pairs, x0) - (2 * beta * (x0 - matrix_a_zero))
+    pos_sum = sum_gradcs(pos_pairs, m_a)
+    neg_sum = sum_gradcs(neg_pairs, m_a)
+    # print(pos_sum)
+    # print(neg_sum)
+    return pos_sum - neg_sum - np.dot(2 * beta, (m_a - matrix_a_zero))
+
+
+def subsamples(t, k_fold_size=k_fold):
+    # Partition T into K equal sized subsamples
+    size = len(t)
+    subsamples = []
+    step = int(size / k_fold_size)
+    for i in range(k_fold_size):
+        subsamples.append(t[i * step:(i * step) + step])
+    return np.array(subsamples), size, step
 
 
 # t : Validation Set
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # k_fold : number of subsets to break t into
-def cve(t, matrix_a, k_fold_size=k_fold):  # 10-fold cross validation
-    size = len(t)
-    # new_t = []
-    # for u in range(len(t[:, 0])):
-    #     p_1 = np.dot(matrix_a, t[:, 0][u])  # [[range(DIM_M)], [range(DIM_M)]]
-    #     p_2 = np.dot(matrix_a, t[:, 1][u])
-    #     new_t.append([p_1,p_2])
-    # new_t = np.array(new_t)
-
-    # Partition T into K equal sized subsamples
-    subsamples = []
-    step = int(size / k_fold_size)
-    for i in range(k_fold_size):
-        subsamples.append(t[i * step:(i * step) + step])
-
+def cve(subsamples, matrix_a, size, step, k_fold_size=k_fold):  # 10-fold cross validation
     total_error = 0
     index = 0
-    for k_fold in np.array(subsamples):
+    sample = 0
+
+    for k_fold in subsamples:
         # determine threshold
-        theta = 0.0  # cosine similarity returns range {-1 to 1}, -1 if dissimilar, 0 if unrelated, 1 if similar
         test_error = 0
+
+        train_k = np.concatenate((subsamples[:sample], subsamples[sample + 1:]), axis=0)
+        t_k = []
+        for sub in train_k:
+            for z in sub:
+                t_k.append(z)
+
+        t_k = np.array(t_k)
+        train_k_labels = np.concatenate((val_labels[:sample * step], val_labels[((sample * step) + step):]))
+
+        sim_scores = []
+        for j in t_k:
+            sim_scores.append(cs(j[0], j[1], matrix_a))
+        sim_scores = np.array(sim_scores)
+
+        sup_vec_mac = svm.SVC(kernel='linear', degree=2)
+        sup_vec_mac.fit(np.reshape(sim_scores, (size - step, 1)), train_k_labels)
+        theta = -sup_vec_mac.intercept_[0] / sup_vec_mac.coef_[0]  # separator for k-1 training data
+
+        # theta = nearest_neighbor.getboundry(sim_scores, train_k_labels)
+        # nearest_neighbor.plot()
+        # print(theta)
+
         for k in range(len(k_fold)):
-            sim_scores=[]
-            train_k = np.concatenate((k_fold[:k], k_fold[k+1:]), axis=0)
-            train_k_labels = np.concatenate((val_labels[k * step:(k * step) + step], val_labels[((k+1) * step) + step:]))
-
-            for j in train_k:
-                sim_scores.append(cs(j[0],j[1], matrix_a))
-
-            sup_vec_mac = svm.SVC()
-
-            sup_vec_mac.fit(sim_scores, train_k_labels)
-
-            theta = sup_vec_mac.coef_[0] # separator for k-1 training data
-            print(theta)
             # get error
             sim = cs(k_fold[k][0], k_fold[k][1], matrix_a)
             if val_labels[index] == 1 and sim < theta:
@@ -146,6 +159,7 @@ def cve(t, matrix_a, k_fold_size=k_fold):  # 10-fold cross validation
             index += 1
         total_error += test_error / len(k_fold)
         # print("k_fold err : {0}".format(test_error / len(k_fold)))
+        sample += 1
     return total_error / k_fold_size
 
 
@@ -161,15 +175,21 @@ def csml(samples, t, matrix_a_p):
     pos_pairs = samples[:1100]
     neg_pairs = samples[1100:]
 
+    t, size, step = subsamples(t)
+
     for n in range(5):
         if min_cve <= 0:
             print("final cve: {0}".format(min_cve))
             return matrix_a_zero
-        for beta in np.arange(0.1, 10, 0.1):
-            if min_cve <= 0:
-                continue
-            matrix_a_star = gradf(matrix_a_next, pos_pairs, neg_pairs, matrix_a_zero, beta)
-            curr_cve = cve(t=t, matrix_a=matrix_a_star)
+
+        for beta in np.arange(0, -1, -0.01):
+
+            matrix_a_star = gradf(matrix_a_zero, pos_pairs, neg_pairs, matrix_a_p, beta)
+
+            print("f : {0}".format(f_a(matrix_a_zero, pos_pairs, neg_pairs, matrix_a_p, beta)))
+            curr_cve = cve(subsamples=t, size=size, step=step, matrix_a=matrix_a_star)
+
+            print(matrix_a_star[0][0])
             # print(matrix_a_star == matrix_a_next)
             if curr_cve < min_cve:
                 min_cve = curr_cve
@@ -224,9 +244,6 @@ print(np.shape(train_pairs))
 val_pairs, c = reduce_dim(val_pairs)
 print(np.shape(val_pairs))
 
-# 3.) Feature Combination?
-# todo: SVM for verification, according to the paper
-
 # 4.) Choose A_0 - find starting value for A_0, using Whitened PCA
 # Whitened PCA is a diagonal matrix(d,m) of the largest eigenvalues of the covariance matrix from PCA
 print("choose A_0")
@@ -235,10 +252,10 @@ eig = sorted(np.linalg.eigvals(covariance))[::-1]
 new_eig = []
 for e in eig:
     new_eig.append(e ** -0.5)
-eig = np.diag(new_eig[0:DIM_D])
+new_eig = np.diag(new_eig[0:DIM_D])
 
 zero = np.zeros((DIM_D, DIM_M - DIM_D))
-A_p = np.concatenate((eig, zero), axis=1)
+A_p = np.concatenate((new_eig, zero), axis=1)
 
 print("A_p shape: {0}".format(np.shape(A_p)))
 
