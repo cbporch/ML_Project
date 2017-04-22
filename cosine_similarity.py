@@ -10,27 +10,28 @@ import nearest_neighbor
 
 DIM_M = 500
 DIM_D = 200
-k_fold = 10
-is_lfw = True
+K_FOLD = 10
+IS_LFW = True
 
 
 def build_lfw():
-    global is_lfw
-    is_lfw = True
+    global IS_LFW
+    IS_LFW = True
     # Training Data
     lfw = fetch_lfw_pairs(subset='train')
     t_pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
+    t_labels = lfw.target
 
     # 10-Fold Validation Set
     lfw_val = fetch_lfw_pairs(subset='10_folds')
     v_set = lfw_val.pairs
     v_labels = lfw_val.target
-    return t_pairs, v_set, v_labels
+    return t_pairs, t_labels, v_set, v_labels
 
 
 def build_olivetti():
-    global is_lfw
-    is_lfw = False
+    global IS_LFW
+    IS_LFW = False
     # fetch regular data
     olivetti = olivetti_faces.fetch_olivetti_faces()
     ol_f_data = olivetti.data
@@ -78,8 +79,17 @@ def build_olivetti():
     pairs = np.concatenate((pairs, matched_pair_set))
 
     # todo - build more pairs, split off validation set
+    t_pairs = []
+    t_labels = []
+    v_pairs = []
+    v_labels = []
+    for i in range(0, len(pairs)-1, 2):
+        t_pairs.append(pairs[i])
+        t_labels.append(labels[i])
+        v_pairs.append(pairs[i+1])
+        v_labels.append(labels[i+1])
 
-    return pairs, labels
+    return np.array(t_pairs), np.array(t_labels), np.array(v_pairs), np.array(v_labels)
 
 
 # xx : vector
@@ -99,12 +109,13 @@ def cs(x, y, matrix_a):
 # neg_x_slice, neg_y_slice : slices with corresponding pairs that do not match
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # alpha : used to weight the function, set to 1 since len(pos set) = len(neg set)
-def g_a(x0, pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice):
+def g_a(x0, pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, alpha):
     pos_sum = neg_sum = 0
     for i in range(len(pos_x_slice)):
         pos_sum += cs(pos_x_slice[i], pos_y_slice[i], x0)
+    for i in range(len(neg_x_slice)):
         neg_sum += cs(neg_x_slice[i], neg_y_slice[i], x0)
-    return pos_sum - neg_sum
+    return pos_sum - (alpha * neg_sum)
 
 
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
@@ -121,14 +132,14 @@ def h_a(matrix_a, beta, matrix_a_zero):
 # matrix_a_zero : starting value of matrix_a
 def f_a(x0, *args):
     # x0 = np.reshape(x0, (DIM_D, DIM_M))
-    p_pairs, n_pairs, matrix_a_zero, beta = args
+    p_pairs, n_pairs, matrix_a_zero, alpha, beta = args
 
     pos_x_slice = p_pairs[:, 0]
     pos_y_slice = p_pairs[:, 1]
     neg_x_slice = n_pairs[:, 0]
     neg_y_slice = n_pairs[:, 1]
 
-    g = g_a(x0, pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice)
+    g = g_a(x0, pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, alpha)
     h = h_a(x0, beta, matrix_a_zero)
 
     return g - h
@@ -154,16 +165,16 @@ def sum_gradcs(pairs, a_):
     return sum_
 
 
-def gradf(m_a, p_pairs, n_pairs, matrix_a_zero, beta):
+def gradf(m_a, p_pairs, n_pairs, matrix_a_zero, alpha, beta):
     # x0 = np.reshape(x0, (DIM_D, DIM_M))
     pos_sum = sum_gradcs(p_pairs, m_a)
     neg_sum = sum_gradcs(n_pairs, m_a)
     # print(pos_sum)
     # print(neg_sum)
-    return pos_sum - neg_sum - (2 * beta * (m_a - matrix_a_zero))
+    return pos_sum - alpha * neg_sum - (2 * beta * (m_a - matrix_a_zero))
 
 
-def subsamples(t, k_fold_size=k_fold):
+def subsamples(t, k_fold_size=K_FOLD):
     # Partition T into K equal sized subsamples
     size = len(t)
     samples = []
@@ -176,7 +187,7 @@ def subsamples(t, k_fold_size=k_fold):
 # t : Validation Set
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # k_fold : number of subsets to break t into
-def cve(samples, matrix_a, size, step, v_labels, k_fold_size=k_fold):  # 10-fold cross validation
+def cve(samples, matrix_a, size, step, v_labels, k_fold_size=K_FOLD):  # 10-fold cross validation
     total_error = 0
     index = 0
     sample = 0
@@ -232,7 +243,7 @@ def cve(samples, matrix_a, size, step, v_labels, k_fold_size=k_fold):  # 10-fold
 def csml(pos_samples, neg_samples, t, matrix_a_p, v):
     matrix_a_next = matrix_a_zero = matrix_a_p
     min_cve = float("inf")
-
+    alpha = len(pos_samples) / len(neg_samples)
     t, size, step = subsamples(t)
     best_b = 0
     for n in range(5):
@@ -240,14 +251,14 @@ def csml(pos_samples, neg_samples, t, matrix_a_p, v):
             print("final cve: {0}".format(min_cve))
             return matrix_a_zero
 
-        for beta in np.arange(1000, 1, -100):
+        for beta in np.arange(1, 0, -0.05):
 
-            matrix_a_star = gradf(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, beta)
+            matrix_a_star = matrix_a_zero - gradf(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, alpha, beta)
 
-            print("f : {0}".format(f_a(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, beta)))
+            print("f : {0}".format(f_a(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, alpha, beta)))
             curr_cve = cve(samples=t, size=size, step=step, matrix_a=matrix_a_star, v_labels=v)
 
-            print(max(matrix_a_star))
+            print("A* : {0}".format(matrix_a_star[0][0]))
             # print(matrix_a_star == matrix_a_next)
             if curr_cve < min_cve:
                 min_cve = curr_cve
@@ -264,15 +275,15 @@ def csml(pos_samples, neg_samples, t, matrix_a_p, v):
 # 1.) Feature Extraction : Intensity
 # concatenate all pixels together
 
-training_pairs, val_set, val_labels = build_lfw()
+training_pairs, t_labels, val_set, val_labels = build_olivetti()
 
 print("Feature Extraction")
 new_training_pairs = []
 for xx in training_pairs:
     new_training_pairs.append([np.ravel(xx[0]),
                                np.ravel(xx[1])])
-train_pairs = np.array(new_training_pairs)
-print(np.shape(train_pairs))
+FE_train_pairs = np.array(new_training_pairs)
+print(np.shape(FE_train_pairs))
 
 new_val = []
 for xx in val_set:
@@ -298,8 +309,8 @@ def reduce_dim(pairs, dim=DIM_M):
     return np.array(new_pairs), pca.get_covariance()
 
 
-train_pairs, covariance = reduce_dim(train_pairs)
-print(np.shape(train_pairs))
+dim_red_t_pairs, covariance = reduce_dim(FE_train_pairs)
+print(np.shape(dim_red_t_pairs))
 
 val_pairs, c = reduce_dim(val_pairs)
 print(np.shape(val_pairs))
@@ -324,11 +335,19 @@ print("A_p shape: {0}".format(np.shape(A_p)))
 print("Pre-processing complete")
 
 # Split into matching (pos) and not matching (neg) pairs
-if is_lfw:
-    pos_pairs = train_pairs[:1100]
-    neg_pairs = train_pairs[1100:]
+if IS_LFW:
+    pos_pairs = dim_red_t_pairs[:1100]
+    neg_pairs = dim_red_t_pairs[1100:]
 else:
+    print("splitting olivetti set into pairs")
     pos_pairs = []
     neg_pairs = []
+    for pair_num in range(len(dim_red_t_pairs)):
+        if t_labels[pair_num] == 1:
+            pos_pairs.append(dim_red_t_pairs[pair_num])
+        else:
+            neg_pairs.append(dim_red_t_pairs[pair_num])
+    pos_pairs=np.array(pos_pairs)
+    neg_pairs=np.array(neg_pairs)
 
 csml(pos_samples=pos_pairs, neg_samples=neg_pairs, t=val_pairs, v=val_labels, matrix_a_p=A_p)
