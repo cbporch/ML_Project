@@ -9,7 +9,7 @@ from sklearn import svm
 import nearest_neighbor
 
 DIM_M = 500
-DIM_D = 200
+DIM_D = 400
 K_FOLD = 10
 IS_LFW = True
 
@@ -83,11 +83,15 @@ def build_olivetti():
     t_labels = []
     v_pairs = []
     v_labels = []
-    for i in range(0, len(pairs)-1, 2):
+    for i in range(0, len(pairs)-1, 4):
         t_pairs.append(pairs[i])
         t_labels.append(labels[i])
-        v_pairs.append(pairs[i+1])
-        v_labels.append(labels[i+1])
+        t_pairs.append(pairs[i+1])
+        t_labels.append(labels[i+1])
+        t_pairs.append(pairs[i + 2])
+        t_labels.append(labels[i + 2])
+        v_pairs.append(pairs[i + 3])
+        v_labels.append(labels[i + 3])
 
     return np.array(t_pairs), np.array(t_labels), np.array(v_pairs), np.array(v_labels)
 
@@ -97,10 +101,10 @@ def build_olivetti():
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 def cs(x, y, matrix_a):
     # returns a kernel matrix
-    # s = cosine_similarity(np.dot(matrix_a, xx).reshape(1, -1), np.dot(matrix_a, y).reshape(1, -1))[0][0]
-    s = np.dot(np.dot(matrix_a, x), np.dot(matrix_a, y)) / np.dot(
-        (np.sqrt(np.dot(np.dot(matrix_a, x), np.dot(matrix_a, x)))),
-        np.dot(np.dot(matrix_a, y), np.dot(matrix_a, y)))
+    s = cosine_similarity(np.dot(matrix_a, x).reshape(1, -1), np.dot(matrix_a, y).reshape(1, -1))[0][0]
+    # s = np.dot(np.dot(matrix_a, x).T, np.dot(matrix_a, y)) / np.dot(
+    #     (np.sqrt(np.dot(np.dot(matrix_a, x).T, np.dot(matrix_a, x)))),
+    #     np.dot(np.dot(matrix_a, y).T, np.dot(matrix_a, y)))
     # print(s)
     return s
 
@@ -122,7 +126,7 @@ def g_a(x0, pos_x_slice, pos_y_slice, neg_x_slice, neg_y_slice, alpha):
 # beta : weight parameter
 # matrix_a_zero : starting value of matrix_a
 def h_a(matrix_a, beta, matrix_a_zero):
-    return beta * np.linalg.norm(matrix_a - matrix_a_zero)
+    return beta * np.linalg.norm(matrix_a - matrix_a_zero) ** 2
 
 
 # pos_x_slice, pos_y_slice : slices with corresponding pairs that match
@@ -151,17 +155,17 @@ def sum_gradcs(pairs, a_):
     y_i = pairs[:, 1]
     sum_ = 0
     for i in range(len(x_i)):
-        pos_u = np.dot(np.dot(a_, x_i[i]).T, np.dot(a_, y_i[i]))
-        pos_v = np.sqrt(np.dot(np.dot(a_, x_i[i]).T, np.dot(a_, x_i[i]))) * \
-            np.sqrt(np.dot(np.dot(a_, y_i[i]).T, np.dot(a_, y_i[i])))
+        uu = np.dot(np.dot(x_i[i].T, a_.T), np.dot(a_, y_i[i]))
+        vv = np.sqrt(np.dot(np.dot(x_i[i].T, a_.T), np.dot(a_, x_i[i]))) * \
+            np.sqrt(np.dot(np.dot(y_i[i].T, a_.T), np.dot(a_, y_i[i])))
         grad_u = np.dot(a_, (np.dot(x_i[i], y_i[i].T) + np.dot(y_i[i], x_i[i].T)))
-        grad_v = (np.sqrt(np.dot(np.dot(a_, y_i[i]).T, np.dot(a_, y_i[i]))) /
-                  np.sqrt(np.dot(np.dot(a_, x_i[i]).T, np.dot(a_, x_i[i])))) * np.dot(a_, np.dot(x_i[i],
-                                                                                                 x_i[i].T)) - \
-                 (np.sqrt(np.dot(np.dot(a_, x_i[i]).T, np.dot(a_, x_i[i]))) /
-                  np.sqrt(np.dot(np.dot(a_, y_i[i]).T, np.dot(a_, y_i[i])))) * np.dot(a_, np.dot(y_i[i],
-                                                                                                 y_i[i].T))
-        sum_ += (grad_u / pos_v) - ((pos_u / pos_v ** 2) * grad_v)
+        grad_v = np.dot((np.sqrt(np.dot(np.dot(y_i[i].T, a_.T), np.dot(a_, y_i[i]))) /
+                  np.sqrt(np.dot(np.dot(x_i[i].T, a_.T), np.dot(a_, x_i[i])))),
+                        np.dot(a_, np.dot(x_i[i], x_i[i].T))) - \
+                 np.dot((np.sqrt(np.dot(np.dot(x_i[i].T, a_.T), np.dot(a_, x_i[i]))) /
+                  np.sqrt(np.dot(np.dot(y_i[i].T, a_.T), np.dot(a_, y_i[i])))), np.dot(a_, np.dot(y_i[i],
+                                                                                                 y_i[i].T)))
+        sum_ += (grad_u / vv) - ((uu / (vv ** 2)) * grad_v)
     return sum_
 
 
@@ -171,7 +175,7 @@ def gradf(m_a, p_pairs, n_pairs, matrix_a_zero, alpha, beta):
     neg_sum = sum_gradcs(n_pairs, m_a)
     # print(pos_sum)
     # print(neg_sum)
-    return pos_sum - alpha * neg_sum - (2 * beta * (m_a - matrix_a_zero))
+    return pos_sum - (alpha * neg_sum) - (2 * beta * (m_a - matrix_a_zero))
 
 
 def subsamples(t, k_fold_size=K_FOLD):
@@ -193,9 +197,6 @@ def cve(samples, matrix_a, size, step, v_labels, k_fold_size=K_FOLD):  # 10-fold
     sample = 0
 
     for k_f in samples:
-        # determine threshold
-        test_error = 0
-
         train_k = np.concatenate((samples[:sample], samples[sample + 1:]), axis=0)
         t_k = []
         for sub in train_k:
@@ -213,24 +214,30 @@ def cve(samples, matrix_a, size, step, v_labels, k_fold_size=K_FOLD):  # 10-fold
         sup_vec_mac = svm.SVC(kernel='linear', degree=2)
         sup_vec_mac.fit(np.reshape(sim_scores, (size - step, 1)), train_k_labels)
         theta = -sup_vec_mac.intercept_[0] / sup_vec_mac.coef_[0]  # separator for k-1 training data
+        # theta = -sup_vec_mac.coef_[0] / sup_vec_mac.intercept_[0]  # separator for k-1 training data
+
+        # theta = 0
 
         # theta = nearest_neighbor.getboundry(sim_scores, train_k_labels)
         # nearest_neighbor.plot()
-        # print(theta)
 
+        test_error = 0
+        f_pos = 0
+        f_neg = 0
         for k in range(len(k_f)):
             # get error
             sim = cs(k_f[k][0], k_f[k][1], matrix_a)
             if v_labels[index] == 1 and sim < theta:
                 # false negative
-                # print("FN: {3} {2} {0} {1}".format(k[0][0], k[1][0], sim, val_labels[index]))
-                test_error += 1
+                print("FN: {0} {1}".format(sim, v_labels[index]))
+                f_neg += 1
             if v_labels[index] == 0 and sim > theta:
                 # false positive
-                # print("FP: {3} {2} {0} {1}".format(k[0][0], k[1][0], sim, val_labels[index]))
-                test_error += 1
+                # print("FP: {0} {1}".format(sim, v_labels[index]))
+                f_pos += 1
             index += 1
-        total_error += test_error / len(k_f)
+        print("theta: {2} FP: {0} FN: {1} err: {3}".format(f_pos, f_neg, theta, ((f_pos + f_neg) / len(k_f))))
+        total_error += (f_pos + f_neg) / len(k_f)
         # print("k_fold err : {0}".format(test_error / len(k_fold)))
         sample += 1
     return total_error / k_fold_size
@@ -241,7 +248,7 @@ def cve(samples, matrix_a, size, step, v_labels, k_fold_size=K_FOLD):  # 10-fold
 # d : dimension
 # a : starting value for matrix_a
 def csml(pos_samples, neg_samples, t, matrix_a_p, v):
-    matrix_a_next = matrix_a_zero = matrix_a_p
+    matrix_a_next = matrix_a_star = matrix_a_zero = matrix_a_p
     min_cve = float("inf")
     alpha = len(pos_samples) / len(neg_samples)
     t, size, step = subsamples(t)
@@ -251,11 +258,11 @@ def csml(pos_samples, neg_samples, t, matrix_a_p, v):
             print("final cve: {0}".format(min_cve))
             return matrix_a_zero
 
-        for beta in np.arange(1, 0, -0.05):
+        for beta in np.arange(0, 10000, 1):
+            # beta = 0.001
+            matrix_a_star -= gradf(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, alpha, beta)
 
-            matrix_a_star = matrix_a_zero - gradf(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, alpha, beta)
-
-            print("f : {0}".format(f_a(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, alpha, beta)))
+            # print("f : {0}".format(f_a(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, alpha, beta)))
             curr_cve = cve(samples=t, size=size, step=step, matrix_a=matrix_a_star, v_labels=v)
 
             print("A* : {0}".format(matrix_a_star[0][0]))
@@ -264,7 +271,7 @@ def csml(pos_samples, neg_samples, t, matrix_a_p, v):
                 min_cve = curr_cve
                 matrix_a_next = matrix_a_star
                 best_b = beta
-            print("min_cve for b = {1:2.2f}: {0:1.5f}".format(min_cve, beta))
+            print("min_cve for b = {1:2.2f}: {0:1.15f}".format(min_cve, beta))
             matrix_a_zero = matrix_a_next
     print("final cve for beta of {1:2.2f}: {0}".format(min_cve, best_b))
     return matrix_a_zero
@@ -275,7 +282,9 @@ def csml(pos_samples, neg_samples, t, matrix_a_p, v):
 # 1.) Feature Extraction : Intensity
 # concatenate all pixels together
 
+
 training_pairs, t_labels, val_set, val_labels = build_olivetti()
+
 
 print("Feature Extraction")
 new_training_pairs = []
