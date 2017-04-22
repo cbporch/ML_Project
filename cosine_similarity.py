@@ -2,20 +2,55 @@ import numpy as np
 
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.datasets import fetch_lfw_pairs
+from sklearn.datasets import olivetti_faces
 from sklearn.decomposition import PCA
 
 DIM_M = 500
 DIM_D = 200
 k_fold = 10
 
-# Training Data
-lfw = fetch_lfw_pairs(subset='train')
-training_pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
 
-# 10-Fold Validation Set
-lfw_val = fetch_lfw_pairs(subset='10_folds')
-val_set = lfw_val.pairs
-val_labels = lfw_val.target
+def build_lfw():
+    # Training Data
+    lfw = fetch_lfw_pairs(subset='train')
+    training_pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
+
+    # 10-Fold Validation Set
+    lfw_val = fetch_lfw_pairs(subset='10_folds')
+    val_set = lfw_val.pairs
+    val_labels = lfw_val.target
+    return training_pairs, val_set, val_labels
+
+
+def build_olivetti():
+    #fetch regular data
+    olivetti = olivetti_faces.fetch_olivetti_faces()
+    ol_f_data = olivetti.data
+    ol_f_targets = olivetti.target
+
+    # fetch shuffled data
+    ol_scramble = olivetti_faces.fetch_olivetti_faces(shuffle=True)
+    ol_scram = ol_scramble.data
+    ol_scram_target = ol_scramble.target
+
+    pairs = np.stack((ol_f_data, ol_scram), axis=1)
+    labels = []
+    for i in range(len(pairs)):
+        if ol_f_targets[i] == ol_scram_target[i]:
+            labels.append(1)
+        else:
+            labels.append(0)
+    rev = np.fliplr(ol_scram)
+    next_pairs = np.stack((ol_f_data, rev), axis=1)
+    scram_targ_flip = ol_scram_target[::-1]
+    for i in range(len(next_pairs)):
+        if ol_f_targets[i] == scram_targ_flip[i]:
+            labels.append(1)
+        else:
+            labels.append(0)
+    pairs = np.concatenate((pairs, next_pairs))
+    return pairs, labels
+
 
 
 # x : vector
