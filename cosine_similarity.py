@@ -52,6 +52,9 @@ def build_olivetti():
         else:
             labels.append(0)
     pairs = np.concatenate((pairs, next_pairs))
+
+    # todo - build more pairs, split off validation set
+
     return pairs, labels
 
 
