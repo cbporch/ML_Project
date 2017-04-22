@@ -26,7 +26,7 @@ def build_lfw():
 
 
 def build_olivetti():
-    #fetch regular data
+    # fetch regular data
     olivetti = olivetti_faces.fetch_olivetti_faces()
     ol_f_data = olivetti.data
     ol_f_targets = olivetti.target
@@ -55,15 +55,15 @@ def build_olivetti():
     return pairs, labels
 
 
-
 # x : vector
 # y : vector
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 def cs(x, y, matrix_a):
     # returns a kernel matrix
     # s = cosine_similarity(np.dot(matrix_a, x).reshape(1, -1), np.dot(matrix_a, y).reshape(1, -1))[0][0]
-    s = np.dot(np.dot(matrix_a, x), np.dot(matrix_a, y)) / np.dot((np.sqrt(np.dot(np.dot(matrix_a, x), np.dot(matrix_a, x)))),
-                                                                    np.dot(np.dot(matrix_a, y), np.dot(matrix_a , y)))
+    s = np.dot(np.dot(matrix_a, x), np.dot(matrix_a, y)) / np.dot(
+        (np.sqrt(np.dot(np.dot(matrix_a, x), np.dot(matrix_a, x)))),
+        np.dot(np.dot(matrix_a, y), np.dot(matrix_a, y)))
     # print(s)
     return s
 
@@ -119,10 +119,10 @@ def sum_gradcs(pairs, a_):
         grad_u = np.dot(a_, (np.dot(x_i[i], y_i[i].T) + np.dot(y_i[i], x_i[i].T)))
         grad_v = (np.sqrt(np.dot(np.dot(a_, y_i[i]).T, np.dot(a_, y_i[i]))) /
                   np.sqrt(np.dot(np.dot(a_, x_i[i]).T, np.dot(a_, x_i[i])))) * np.dot(a_, np.dot(x_i[i],
-                                                                                                   x_i[i].T)) - \
+                                                                                                 x_i[i].T)) - \
                  (np.sqrt(np.dot(np.dot(a_, x_i[i]).T, np.dot(a_, x_i[i]))) /
                   np.sqrt(np.dot(np.dot(a_, y_i[i]).T, np.dot(a_, y_i[i])))) * np.dot(a_, np.dot(y_i[i],
-                                                                                                   y_i[i].T))
+                                                                                                 y_i[i].T))
         sum_ += (grad_u / pos_v) - ((pos_u / pos_v ** 2) * grad_v)
     return sum_
 
@@ -133,7 +133,7 @@ def gradf(m_a, pos_pairs, neg_pairs, matrix_a_zero, beta):
     neg_sum = sum_gradcs(neg_pairs, m_a)
     # print(pos_sum)
     # print(neg_sum)
-    return pos_sum - neg_sum - np.dot(2 * beta, (m_a - matrix_a_zero))
+    return pos_sum - neg_sum - (2 * beta * (m_a - matrix_a_zero))
 
 
 def subsamples(t, k_fold_size=k_fold):
@@ -149,7 +149,7 @@ def subsamples(t, k_fold_size=k_fold):
 # t : Validation Set
 # matrix_a : linear transformation A: R^m -> R^d(d<=m)
 # k_fold : number of subsets to break t into
-def cve(subsamples, matrix_a, size, step, k_fold_size=k_fold):  # 10-fold cross validation
+def cve(subsamples, matrix_a, size, step, v_labels, k_fold_size=k_fold):  # 10-fold cross validation
     total_error = 0
     index = 0
     sample = 0
@@ -165,7 +165,7 @@ def cve(subsamples, matrix_a, size, step, k_fold_size=k_fold):  # 10-fold cross 
                 t_k.append(z)
 
         t_k = np.array(t_k)
-        train_k_labels = np.concatenate((val_labels[:sample * step], val_labels[((sample * step) + step):]))
+        train_k_labels = np.concatenate((v_labels[:sample * step], v_labels[((sample * step) + step):]))
 
         sim_scores = []
         for j in t_k:
@@ -183,11 +183,11 @@ def cve(subsamples, matrix_a, size, step, k_fold_size=k_fold):  # 10-fold cross 
         for k in range(len(k_fold)):
             # get error
             sim = cs(k_fold[k][0], k_fold[k][1], matrix_a)
-            if val_labels[index] == 1 and sim < theta:
+            if v_labels[index] == 1 and sim < theta:
                 # false negative
                 # print("FN: {3} {2} {0} {1}".format(k[0][0], k[1][0], sim, val_labels[index]))
                 test_error += 1
-            if val_labels[index] == 0 and sim > theta:
+            if v_labels[index] == 0 and sim > theta:
                 # false positive
                 # print("FP: {3} {2} {0} {1}".format(k[0][0], k[1][0], sim, val_labels[index]))
                 test_error += 1
@@ -202,7 +202,7 @@ def cve(subsamples, matrix_a, size, step, k_fold_size=k_fold):  # 10-fold cross 
 # t : Validation Set
 # d : dimension
 # a : starting value for matrix_a
-def csml(samples, t, matrix_a_p):
+def csml(samples, t, matrix_a_p, v):
     matrix_a_next = matrix_a_zero = matrix_a_p
     min_cve = float("inf")
 
@@ -211,7 +211,7 @@ def csml(samples, t, matrix_a_p):
     neg_pairs = samples[1100:]
 
     t, size, step = subsamples(t)
-
+    best_b = 0
     for n in range(5):
         if min_cve <= 0:
             print("final cve: {0}".format(min_cve))
@@ -222,9 +222,9 @@ def csml(samples, t, matrix_a_p):
             matrix_a_star = gradf(matrix_a_zero, pos_pairs, neg_pairs, matrix_a_p, beta)
 
             print("f : {0}".format(f_a(matrix_a_zero, pos_pairs, neg_pairs, matrix_a_p, beta)))
-            curr_cve = cve(subsamples=t, size=size, step=step, matrix_a=matrix_a_star)
+            curr_cve = cve(subsamples=t, size=size, step=step, matrix_a=matrix_a_star, v_labels=v)
 
-            print(matrix_a_star[0][0])
+            print(matrix_a_star)
             # print(matrix_a_star == matrix_a_next)
             if curr_cve < min_cve:
                 min_cve = curr_cve
@@ -240,6 +240,8 @@ def csml(samples, t, matrix_a_p):
 # ***** Start Pre-processing *****
 # 1.) Feature Extraction : Intensity
 # concatenate all pixels together
+
+training_pairs, val_set, val_labels = build_lfw()
 
 print("Feature Extraction")
 new_training_pairs = []
@@ -298,4 +300,4 @@ print("A_p shape: {0}".format(np.shape(A_p)))
 #################################################
 print("Pre-processing complete")
 
-csml(samples=train_pairs, t=val_pairs, matrix_a_p=A_p)
+csml(samples=train_pairs, t=val_pairs, v=val_labels, matrix_a_p=A_p)
