@@ -45,14 +45,14 @@ def run_comparison():
                                                    compare(whiten(linear_transform), whitened)))
 
 
-# x = normalize(x_data)
-# x = whiten(x)
-# print(x)
+# xx = normalize(x_data)
+# xx = whiten(xx)
+# print(xx)
 
 
 def getboundry(x_data, y_data, doplot=False):
     # pca = PCA(n_components=1, whiten=True)
-    # x = pca.fit_transform(np.reshape(x_data, (len(x_data), 1)), y_data)
+    # xx = pca.fit_transform(np.reshape(x_data, (len(x_data), 1)), y_data)
 
     step = .01
     temp = []
