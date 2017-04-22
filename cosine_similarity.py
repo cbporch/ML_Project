@@ -9,7 +9,7 @@ from sklearn import svm
 import nearest_neighbor
 
 DIM_M = 500
-DIM_D = 400
+DIM_D = 300
 K_FOLD = 10
 IS_LFW = True
 
@@ -211,7 +211,7 @@ def cve(samples, matrix_a, size, step, v_labels, k_fold_size=K_FOLD):  # 10-fold
             sim_scores.append(cs(j[0], j[1], matrix_a))
         sim_scores = np.array(sim_scores)
 
-        sup_vec_mac = svm.SVC(kernel='linear', degree=2)
+        sup_vec_mac = svm.SVC(kernel='linear', degree=3)
         sup_vec_mac.fit(np.reshape(sim_scores, (size - step, 1)), train_k_labels)
         theta = -sup_vec_mac.intercept_[0] / sup_vec_mac.coef_[0]  # separator for k-1 training data
         # theta = -sup_vec_mac.coef_[0] / sup_vec_mac.intercept_[0]  # separator for k-1 training data
@@ -236,7 +236,7 @@ def cve(samples, matrix_a, size, step, v_labels, k_fold_size=K_FOLD):  # 10-fold
                 # print("FP: {0} {1}".format(sim, v_labels[index]))
                 f_pos += 1
             index += 1
-        print("theta: {2} FP: {0} FN: {1} err: {3}".format(f_pos, f_neg, theta, ((f_pos + f_neg) / len(k_f))))
+        print("size: {4} theta: {2} FP: {0} FN: {1} err: {3}".format(f_pos, f_neg, theta, ((f_pos + f_neg) / len(k_f)), len(k_f)))
         total_error += (f_pos + f_neg) / len(k_f)
         # print("k_fold err : {0}".format(test_error / len(k_fold)))
         sample += 1
@@ -260,7 +260,7 @@ def csml(pos_samples, neg_samples, t, matrix_a_p, v):
 
         for beta in np.arange(0, 10000, 1):
             # beta = 0.001
-            matrix_a_star -= gradf(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, alpha, beta)
+            matrix_a_star = gradf(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, alpha, beta)
 
             # print("f : {0}".format(f_a(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, alpha, beta)))
             curr_cve = cve(samples=t, size=size, step=step, matrix_a=matrix_a_star, v_labels=v)
@@ -277,13 +277,22 @@ def csml(pos_samples, neg_samples, t, matrix_a_p, v):
     return matrix_a_zero
 
 
+def reduce_dim(pairs, dim=DIM_M):
+    pca = PCA(n_components=dim, whiten=True)
+    size = len(pairs)
+    new_pairs = pca.fit_transform(np.concatenate((pairs[:, 0], pairs[:, 1]), axis=0))
+    pair1 = new_pairs[:size]
+    pair2 = new_pairs[size:]
+    new_pairs = np.stack((pair1, pair2), axis=1)
+    return np.array(new_pairs), pca.get_covariance()
+
 #################################################
 # ***** Start Pre-processing *****
 # 1.) Feature Extraction : Intensity
 # concatenate all pixels together
 
 
-training_pairs, t_labels, val_set, val_labels = build_olivetti()
+training_pairs, t_labels, val_set, val_labels = build_lfw()
 
 
 print("Feature Extraction")
@@ -306,17 +315,6 @@ print(np.shape(val_pairs))
 # pairs : pairs of LFW data to transform
 # dim: dimension to reduce set to
 print('Dimension Reduction')
-
-
-def reduce_dim(pairs, dim=DIM_M):
-    pca = PCA(n_components=dim, whiten=True)
-    size = len(pairs)
-    new_pairs = pca.fit_transform(np.concatenate((pairs[:, 0], pairs[:, 1]), axis=0))
-    pair1 = new_pairs[:size]
-    pair2 = new_pairs[size:]
-    new_pairs = np.stack((pair1, pair2), axis=1)
-    return np.array(new_pairs), pca.get_covariance()
-
 
 dim_red_t_pairs, covariance = reduce_dim(FE_train_pairs)
 print(np.shape(dim_red_t_pairs))
