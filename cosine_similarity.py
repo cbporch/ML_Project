@@ -11,21 +11,26 @@ import nearest_neighbor
 DIM_M = 500
 DIM_D = 200
 k_fold = 10
+is_lfw = True
 
 
 def build_lfw():
+    global is_lfw
+    is_lfw = True
     # Training Data
     lfw = fetch_lfw_pairs(subset='train')
-    training_pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
+    t_pairs = lfw.pairs  # 2200 pairs first 1100 are matches, last 1100 are not
 
     # 10-Fold Validation Set
     lfw_val = fetch_lfw_pairs(subset='10_folds')
-    val_set = lfw_val.pairs
-    val_labels = lfw_val.target
-    return training_pairs, val_set, val_labels
+    v_set = lfw_val.pairs
+    v_labels = lfw_val.target
+    return t_pairs, v_set, v_labels
 
 
 def build_olivetti():
+    global is_lfw
+    is_lfw = False
     # fetch regular data
     olivetti = olivetti_faces.fetch_olivetti_faces()
     ol_f_data = olivetti.data
@@ -52,6 +57,25 @@ def build_olivetti():
         else:
             labels.append(0)
     pairs = np.concatenate((pairs, next_pairs))
+
+    matched_pair_set = []
+    for i in range(40):
+        # for each participant in the dataset, to ensure accurately paired faces
+        participant_set = ol_f_data[i*10:(i*10)+10]
+        # rot2 and pair
+        shifted = np.concatenate(np.array((participant_set[2:], participant_set[:2])))
+        shift_stack = np.stack((participant_set, shifted), axis=1)
+        # reverse and pair
+        flip_stack = np.stack((participant_set, participant_set[::-1]), axis=1)
+        # this should produce 20 unique pairings for each participant
+        for p, k in zip(flip_stack, shift_stack):
+            matched_pair_set.append(p)
+            matched_pair_set.append(k)
+            labels.append(1)
+            labels.append(1)
+
+    matched_pair_set = np.array(matched_pair_set)
+    pairs = np.concatenate((pairs, matched_pair_set))
 
     # todo - build more pairs, split off validation set
 
@@ -205,13 +229,9 @@ def cve(subsamples, matrix_a, size, step, v_labels, k_fold_size=k_fold):  # 10-f
 # t : Validation Set
 # d : dimension
 # a : starting value for matrix_a
-def csml(samples, t, matrix_a_p, v):
+def csml(pos_samples, neg_samples, t, matrix_a_p, v):
     matrix_a_next = matrix_a_zero = matrix_a_p
     min_cve = float("inf")
-
-    # Split into matching (pos) and not matching (neg) pairs
-    pos_pairs = samples[:1100]
-    neg_pairs = samples[1100:]
 
     t, size, step = subsamples(t)
     best_b = 0
@@ -220,14 +240,14 @@ def csml(samples, t, matrix_a_p, v):
             print("final cve: {0}".format(min_cve))
             return matrix_a_zero
 
-        for beta in np.arange(0, -1, -0.01):
+        for beta in np.arange(1000, 1, -100):
 
-            matrix_a_star = gradf(matrix_a_zero, pos_pairs, neg_pairs, matrix_a_p, beta)
+            matrix_a_star = gradf(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, beta)
 
-            print("f : {0}".format(f_a(matrix_a_zero, pos_pairs, neg_pairs, matrix_a_p, beta)))
+            print("f : {0}".format(f_a(matrix_a_zero, pos_samples, neg_samples, matrix_a_p, beta)))
             curr_cve = cve(subsamples=t, size=size, step=step, matrix_a=matrix_a_star, v_labels=v)
 
-            print(matrix_a_star)
+            print(max(matrix_a_star))
             # print(matrix_a_star == matrix_a_next)
             if curr_cve < min_cve:
                 min_cve = curr_cve
@@ -269,7 +289,7 @@ print('Dimension Reduction')
 
 
 def reduce_dim(pairs, dim=DIM_M):
-    pca = PCA(n_components=dim)
+    pca = PCA(n_components=dim, whiten=True)
     size = len(pairs)
     new_pairs = pca.fit_transform(np.concatenate((pairs[:, 0], pairs[:, 1]), axis=0))
     pair1 = new_pairs[:size]
@@ -303,4 +323,9 @@ print("A_p shape: {0}".format(np.shape(A_p)))
 #################################################
 print("Pre-processing complete")
 
-csml(samples=train_pairs, t=val_pairs, v=val_labels, matrix_a_p=A_p)
+# Split into matching (pos) and not matching (neg) pairs
+if is_lfw:
+    pos_pairs = train_pairs[:1100]
+    neg_pairs = train_pairs[1100:]
+
+csml(pos_samples=pos_pairs, neg_samples=neg_pairs, t=val_pairs, v=val_labels, matrix_a_p=A_p)
